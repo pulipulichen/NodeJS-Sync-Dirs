@@ -1,4 +1,4 @@
-/* global process */
+/* global process, __dirname, Promise */
 
 //const config = require('./config.js')
 const handleFileFromArgvArray = require('./lib/cli/handleFileFromArgvArray.js')
@@ -8,6 +8,7 @@ const path = require('path')
 const fs = require('fs')
 
 const getFilelistFromFolder = require('./lib/fileList/getFilelistFromFolder.js')
+const sleep = require('./lib/await/sleep.js')
 
 let main = function () {
 
@@ -56,16 +57,49 @@ let main = function () {
     
     // --------------------------------
     
+    // 先取得快取
+    let logList = []
+    
+    let logFilename = path.resolve(__dirname, './log/', getLogFilename(sourceFolder))
+    //console.log(logFilename)
+    
+    
+    if (fs.existsSync(logFilename)) {
+      const buffer = fs.readFileSync(logFilename, 'utf8')
+      let fileContent = buffer.toString();
+      fileContent = fileContent.replace(/^\uFEFF/, '');
+      
+      logList = fileContent.split('\n').filter(f => f.trim() !== '')
+    }
+    
+    // --------------------------------
+    
     let sourceList = await getFilelistFromFolder(sourceFolder)
     //console.log(sourceList)
     
+    let skipFilenameList = [
+      'desktop.ini'
+    ]
+    
     // ---------------------------------
     
-    sourceList.forEach((sourceFile) => {
+    await Promise.all(sourceList.map(async (sourceFile) => {
+      
+      if (sourceFile.trim() === '') {
+        return false
+      }
+      
+      let basename = path.basename(sourceFile)
+      if (skipFilenameList.indexOf(basename) > -1) {
+        return false
+      }
+      
       //console.log(sourceFile)
       
       // 我是否已經處理過這個檔案了？
-      
+      if (logList.indexOf(sourceFile) > -1) {
+        return false
+      }
       
       // -----------------------
       
@@ -76,10 +110,54 @@ let main = function () {
       let targetFile = targetFolder + relativePath
       let fileFolder = path.dirname(targetFile)
       
-      console.log(fileFolder)
+      let sourceFileSize = (fs.statSync(sourceFile)).size
+      
+      //console.log(fileFolder, sourceFileSize)
       
       // ---------------------
-    })
+      
+      let passed = false
+      while (passed === false) {
+        try {
+          
+          // -------------------------
+          // 建立目錄
+          
+          if (fs.existsSync(fileFolder) === false
+                  || fs.lstatSync(fileFolder).isDirectory() === false) {
+            fs.mkdirSync(fileFolder, { recursive: true });
+          }
+          
+          // -------------------------
+          // 比大小
+          let doCopy = true
+          if (fs.existsSync(targetFile)) {
+            let targetFileSize = (fs.statSync(targetFile)).size
+            if (targetFileSize === sourceFileSize) {
+              doCopy = false
+            }
+          }
+          
+          // -------------------------
+          // 複製
+          
+          if (doCopy) {
+            await copyFile(sourceFile, targetFile)
+          }
+
+          // -------------------------
+          fs.appendFile(logFilename, sourceFile + '\n', function (err) {
+            if (err) throw err
+          })
+          passed = true
+        }
+        catch (e) {
+          console.error(e)
+          await sleep(30 * 1000)
+        }
+      }
+      await sleep(1000)
+    }))
     
     /*
     if (!file) {
@@ -102,6 +180,17 @@ let main = function () {
     execShellCommand(command)
      */
   }) 
+}
+
+let getLogFilename = function (dir) {
+  let basename = path.basename(dir)
+  let time = fs.lstatSync(dir).mtime
+  
+  return basename + '-' + time.getTime() + '.txt'
+}
+
+const copyFile = async (src, dest) => {
+  await fs.promises.copyFile(src, dest)
 }
 
 main()
