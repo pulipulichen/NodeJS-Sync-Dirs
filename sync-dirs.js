@@ -111,21 +111,24 @@ let main = function () {
     // ---------------------------------
     
     let sourceFileCount = sourceList.length
-    let maxThreads = 4
+    let maxThreads = 10
     let threadCount = 0
     
-    await Promise.all(sourceList.map(async (relativePath, i) => {
+    //await Promise.all(sourceList.map(async (relativePath, i) => {
+      
+    for (let i = 0; i < sourceFileCount; i++) {
       
       while (threadCount >= maxThreads) {
-        await sleep(3000)
+        await sleep(100)
       }
 
-    //for (let i = 0; i < sourceFileCount; i++) {
-      //let relativePath = sourceList[i]
+      
+      let relativePath = sourceList[i]
       //console.log(relativePath)
       let sourceFile = sourceFolder + relativePath
       if (relativePath.trim() === '') {
-        return false
+        continue;
+        //return false
       }
       
       // 取得基本路徑
@@ -134,8 +137,8 @@ let main = function () {
       let basename = path.basename(sourceFile)
       if (skipFilenameList.indexOf(basename) > -1) {
         //console.log('[IGNORE]\t' + relativePath)
-        return false
-        //continue
+        //return false
+        continue
       }
       
       //console.log(sourceFile)
@@ -144,8 +147,8 @@ let main = function () {
       
       if (logList.indexOf(relativePath) > -1) {
         //console.log('[LOGED]\t' + relativePath)
-        return false
-        //continue
+        //return false
+        continue
       }
       
       // -----------------------
@@ -170,68 +173,70 @@ let main = function () {
       let passed = false
       let doWait = true
       
-      while (passed === false) {
-        try {
-          
-          // -------------------------
-          // 建立目錄
-          
-          if (fs.existsSync(fileFolder) === false
-                  || fs.lstatSync(fileFolder).isDirectory() === false) {
-            fs.mkdirSync(fileFolder, { recursive: true });
-          }
-          
-          // -------------------------
-          // 比大小
-          let doCopy = true
-          if (fs.existsSync(targetFile)) {
-            let targetFileSize = (fs.statSync(targetFile)).size
-            if (targetFileSize === sourceFileSize) {
-              doCopy = false
-            }
-          }
-          
-          // -------------------------
-          // 複製
-          
-          let displayRelativePath = relativePath
-          
-          let displayLimit = 40
-          if (displayRelativePath.length > displayLimit) {
-            displayRelativePath = displayRelativePath.slice(0, displayLimit) + '...'
-          }
-          
-          if (doCopy) {
-            console.log('[' + ddhhmm + ' COPY ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
-            
-            threadCount++
-            await copyFile(sourceFile, targetFile)
-            threadCount--
-            //console.log('[' + ddhhmm + ' COPIED   ' + progress + ']\t' + displayRelativePath)
-          }
-          else {
-            console.log('[' + ddhhmm + ' EXISTED ' + progress + ']\t' + displayRelativePath)
-            doWait = false
-          }
+      let run = async () => {
+        while (passed === false) {
+          try {
 
-          // -------------------------
-          //fs.appendFile(logFilename, sourceFile + '\n', function (err) {
-          //  if (err) throw err
-          //})
-          fs.appendFileSync(logFilename, relativePath + '\n')
-          passed = true
+            // -------------------------
+            // 建立目錄
+
+            if (fs.existsSync(fileFolder) === false
+                    || fs.lstatSync(fileFolder).isDirectory() === false) {
+              fs.mkdirSync(fileFolder, { recursive: true });
+            }
+
+            // -------------------------
+            // 比大小
+            let doCopy = true
+            if (fs.existsSync(targetFile)) {
+              let targetFileSize = (fs.statSync(targetFile)).size
+              if (targetFileSize === sourceFileSize) {
+                doCopy = false
+              }
+            }
+
+            // -------------------------
+            // 複製
+
+            let displayRelativePath = relativePath
+
+            let displayLimit = 40
+            if (displayRelativePath.length > displayLimit) {
+              displayRelativePath = displayRelativePath.slice(0, displayLimit) + '...'
+            }
+
+            if (doCopy) {
+              console.log('[' + ddhhmm + ' COPY ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
+
+              threadCount++
+              await copyFile(sourceFile, targetFile)
+              await sleep(10)
+              threadCount--
+              //console.log('[' + ddhhmm + ' COPIED   ' + progress + ']\t' + displayRelativePath)
+            }
+            else {
+              console.log('[' + ddhhmm + ' EXISTED ' + progress + ']\t' + displayRelativePath)
+              doWait = false
+            }
+
+            // -------------------------
+            //fs.appendFile(logFilename, sourceFile + '\n', function (err) {
+            //  if (err) throw err
+            //})
+            fs.appendFileSync(logFilename, relativePath + '\n')
+            passed = true
+          }
+          catch (e) {
+            console.error(e)
+            await sleep(30 * 1000)
+          }
         }
-        catch (e) {
-          console.error(e)
-          await sleep(30 * 1000)
-        }
+        
       }
       
-      if (doWait) {
-        await sleep(100)
-      }
-    //}
-    }))
+      run()
+    }
+    //}))
     
     /*
     if (!file) {
