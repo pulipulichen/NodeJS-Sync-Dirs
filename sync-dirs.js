@@ -47,11 +47,10 @@ let main = function () {
     
     if (fs.existsSync(targetFolder) === false) {
       //return continue
-      return false
+      //return false
       //continue
     }
-
-    if (fs.lstatSync(targetFolder).isDirectory() === false) {
+    else if (fs.lstatSync(targetFolder).isDirectory() === false) {
       throw Error(targetFolder + ' should be a directory.')
     }
     
@@ -72,6 +71,9 @@ let main = function () {
       logList = fileContent.split('\n').filter(f => f.trim() !== '')
     }
     
+    //console.log(logList)
+    //return false
+    
     // ---------------------------------
     let sourceList = []
     
@@ -87,6 +89,7 @@ let main = function () {
     
     if (sourceList.length === 0) {
       sourceList = await getFilelistFromFolder(sourceFolder)
+      sourceList = sourceList.map(f => f.slice(sourceFolder.length))
       /*
       fs.appendFile(sourceListFilename, sourceList.join('\n'), function (err) {
         if (err) throw err
@@ -99,6 +102,7 @@ let main = function () {
     
     
     //console.log(sourceList)
+    //return false
     
     let skipFilenameList = [
       'desktop.ini'
@@ -107,33 +111,49 @@ let main = function () {
     // ---------------------------------
     
     let sourceFileCount = sourceList.length
-    await Promise.all(sourceList.map(async (sourceFile, i) => {
+    let maxThreads = 4
+    let threadCount = 0
+    
+    await Promise.all(sourceList.map(async (relativePath, i) => {
       
-      if (sourceFile.trim() === '') {
+      while (threadCount >= maxThreads) {
+        await sleep(3000)
+      }
+
+    //for (let i = 0; i < sourceFileCount; i++) {
+      //let relativePath = sourceList[i]
+      //console.log(relativePath)
+      let sourceFile = sourceFolder + relativePath
+      if (relativePath.trim() === '') {
         return false
       }
       
       // 取得基本路徑
-      let relativePath = sourceFile.slice(sourceFolder.length)
+      //let relativePath = sourceFile.slice(sourceFolder.length)
       //console.log(relativePath)
       let basename = path.basename(sourceFile)
       if (skipFilenameList.indexOf(basename) > -1) {
         //console.log('[IGNORE]\t' + relativePath)
         return false
+        //continue
       }
       
       //console.log(sourceFile)
       
       // 我是否已經處理過這個檔案了？
-      if (logList.indexOf(sourceFile) > -1) {
+      
+      if (logList.indexOf(relativePath) > -1) {
         //console.log('[LOGED]\t' + relativePath)
         return false
+        //continue
       }
       
       // -----------------------
       
       let percent = Math.floor(i / sourceFileCount * 100)
       let progress = '(' + percent +'%) ' + i + '/' + sourceFileCount
+      
+      let ddhhmm = getDateString()
       
       // -----------------------
       
@@ -174,12 +194,23 @@ let main = function () {
           // -------------------------
           // 複製
           
+          let displayRelativePath = relativePath
+          
+          let displayLimit = 40
+          if (displayRelativePath.length > displayLimit) {
+            displayRelativePath = displayRelativePath.slice(0, displayLimit) + '...'
+          }
+          
           if (doCopy) {
+            console.log('[' + ddhhmm + ' COPY ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
+            
+            threadCount++
             await copyFile(sourceFile, targetFile)
-            console.log('[COPIED ' + progress + ']\t' + relativePath)
+            threadCount--
+            //console.log('[' + ddhhmm + ' COPIED   ' + progress + ']\t' + displayRelativePath)
           }
           else {
-            console.log('[EXISTED ' + progress + ']\t' + relativePath)
+            console.log('[' + ddhhmm + ' EXISTED ' + progress + ']\t' + displayRelativePath)
             doWait = false
           }
 
@@ -187,7 +218,7 @@ let main = function () {
           //fs.appendFile(logFilename, sourceFile + '\n', function (err) {
           //  if (err) throw err
           //})
-          fs.appendFileSync(logFilename, sourceFile + '\n')
+          fs.appendFileSync(logFilename, relativePath + '\n')
           passed = true
         }
         catch (e) {
@@ -199,6 +230,7 @@ let main = function () {
       if (doWait) {
         await sleep(100)
       }
+    //}
     }))
     
     /*
@@ -231,8 +263,54 @@ let getLogFilename = function (dir) {
   return basename + '-' + time.getTime()
 }
 
-const copyFile = async (src, dest) => {
-  await fs.promises.copyFile(src, dest)
+async function copyFile(source, target) {
+  let sourceFileSize = (fs.statSync(source)).size
+  
+  var rd = fs.createReadStream(source);
+  var wr = fs.createWriteStream(target);
+  try {
+    return await new Promise(function(resolve, reject) {
+      rd.on('error', reject);
+      wr.on('error', reject);
+      wr.on('finish', async () => {
+        
+        //await sleep(100)
+        
+        while (true) {
+          
+          if (fs.existsSync(target)
+                  && (fs.statSync(target)).size === sourceFileSize) {
+            break
+          }
+          await sleep(100)
+        }
+        
+        resolve()
+      });
+      rd.pipe(wr);
+    });
+  } catch (error) {
+    rd.destroy();
+    wr.end();
+    throw error;
+  }
+}
+
+function pad(v){
+  return (v<10)?'0'+v:v
+}
+
+function getDateString(){
+  let d = new Date()
+  //var year = d.getFullYear();
+  //var month = pad(d.getMonth()+1);
+  var day = pad(d.getDate());
+  var hour = pad(d.getHours());
+  var min = pad(d.getMinutes());
+  //var sec = pad(d.getSeconds());
+  //return year+month+day+hour+min+sec;
+  return day +"-"+hour+":"+min
+  //YYYYMMDDhhmmss
 }
 
 main()
