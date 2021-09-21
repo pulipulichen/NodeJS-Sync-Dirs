@@ -115,6 +115,11 @@ let main = function () {
     let threadCount = 0
     
     //await Promise.all(sourceList.map(async (relativePath, i) => {
+    let lastTime
+    let lastTimeIndex
+    let lastTimeString = ''
+    let lastPerSpentTime
+    let handleCounter = 0
       
     for (let i = 0; i < sourceFileCount; i++) {
       
@@ -122,6 +127,44 @@ let main = function () {
         await sleep(100)
       }
 
+      // -----------------------------------
+      
+      if (!lastTime) {
+        lastTime = (new Date()).getTime()
+        lastTimeIndex = i
+      }
+      if (handleCounter > (maxThreads) * 10) {
+        let currentTime = (new Date()).getTime()
+        let timeInterval = currentTime - lastTime
+        
+        // ---------------
+        // 估算需要的時間
+        
+        let perSpentTime = timeInterval / handleCounter
+        if (lastPerSpentTime) {
+          perSpentTime = (perSpentTime + lastPerSpentTime) / 2
+        }
+        lastPerSpentTime = perSpentTime
+        
+        let needSpentTime = perSpentTime * (sourceFileCount - i)
+        
+        let currentDate = (new Date()).getTime()
+        let predictTime = (new Date())
+        predictTime.setTime(currentDate + needSpentTime)
+        //console.log(predictTime.getTime())
+        lastTimeString = getDateString(predictTime)
+        
+        // ---------------
+        
+        lastTime = currentTime
+        lastTimeIndex = i
+        handleCounter = 0
+      }
+      
+      //console.log(handleCounter)
+      
+      // -----------------------------------
+      
       
       let relativePath = sourceList[i]
       //console.log(relativePath)
@@ -144,7 +187,7 @@ let main = function () {
       //console.log(sourceFile)
       
       // 我是否已經處理過這個檔案了？
-      
+      //console.log(progress)
       if (logList.indexOf(relativePath) > -1) {
         //console.log('[LOGED]\t' + relativePath)
         //return false
@@ -155,7 +198,10 @@ let main = function () {
       
       let percent = Math.floor(i / sourceFileCount * 100)
       let progress = '(' + percent +'%) ' + i + '/' + sourceFileCount
-      
+      if (lastTimeString !== '') {
+        progress = progress + ' ' + lastTimeString
+      }
+      //console.log(progress)
       let ddhhmm = getDateString()
       
       // -----------------------
@@ -171,10 +217,14 @@ let main = function () {
       // ---------------------
       
       let passed = false
-      let doWait = true
+      //let doWait = true
       
       let run = async () => {
         while (passed === false) {
+          while (threadCount >= maxThreads) {
+            await sleep(100)
+          }
+          
           try {
 
             // -------------------------
@@ -209,7 +259,21 @@ let main = function () {
               console.log('[' + ddhhmm + ' COPY ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
 
               threadCount++
+              
+              let stopped = false
+              let timer = setTimeout(() => {
+                // 傳送太久的話
+                threadCount--
+                stopped = true
+                console.log('[' + ddhhmm + ' TIMEOUT ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
+              }, 30 * 60 * 1000)
+              
               await copyFile(sourceFile, targetFile)
+              clearTimeout(timer)
+              if (stopped === true) {
+                continue
+              }
+              handleCounter++
               await sleep(10)
               threadCount--
               //console.log('[' + ddhhmm + ' COPIED   ' + progress + ']\t' + displayRelativePath)
@@ -305,8 +369,10 @@ function pad(v){
   return (v<10)?'0'+v:v
 }
 
-function getDateString(){
-  let d = new Date()
+function getDateString(d){
+  if (!d) {
+    d = new Date()
+  }
   //var year = d.getFullYear();
   //var month = pad(d.getMonth()+1);
   var day = pad(d.getDate());
