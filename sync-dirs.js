@@ -232,7 +232,17 @@ let main = function () {
 
             if (fs.existsSync(fileFolder) === false
                     || fs.lstatSync(fileFolder).isDirectory() === false) {
+              
+              if (threadCount < maxThreads) {
+                threadCount++
+              }
+              
               fs.mkdirSync(fileFolder, { recursive: true });
+              await sleep(10)
+              
+              if (threadCount > 0) {
+                threadCount--
+              }
             }
 
             // -------------------------
@@ -257,13 +267,16 @@ let main = function () {
 
             if (doCopy) {
               console.log('[' + ddhhmm + ' COPY ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
-
-              threadCount++
+              if (threadCount < maxThreads) {
+                threadCount++
+              }
               
               let stopped = false
               let timer = setTimeout(() => {
                 // 傳送太久的話
-                threadCount--
+                if (threadCount > 0) {
+                  threadCount--
+                }
                 stopped = true
                 console.log('[' + ddhhmm + ' TIMEOUT ' + threadCount + ' ' + progress + ']\t' + displayRelativePath)
               }, 30 * 60 * 1000)
@@ -275,7 +288,9 @@ let main = function () {
               }
               handleCounter++
               await sleep(10)
-              threadCount--
+              if (threadCount > 0) {
+                threadCount--
+              }
               //console.log('[' + ddhhmm + ' COPIED   ' + progress + ']\t' + displayRelativePath)
             }
             else {
@@ -291,8 +306,10 @@ let main = function () {
             passed = true
           }
           catch (e) {
+            threadCount = maxThreads
             console.error(e)
             await sleep(30 * 1000)
+            threadCount = 0
           }
         }
         
